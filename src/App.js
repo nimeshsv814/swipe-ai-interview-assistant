@@ -47,7 +47,7 @@ const App = () => {
       <Layout className="app-layout">
         <Header className="app-header">
           <div className="header-content">
-            <h1 className="app-title">Swipe AI-Interview Assistant</h1>
+            <h1 className="app-title">AI-Powered Interview Assistant</h1>
             <Button 
               icon={<ReloadOutlined />} 
               onClick={handleRestart}

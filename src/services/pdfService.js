@@ -1,11 +1,14 @@
-// src/services/pdfService.js - FINAL FIX FOR REGEX ESCAPES
+// src/services/pdfService.js - IMPROVED VERSION WITH BETTER EXTRACTION
 class PDFService {
   async extractTextFromPDF(file) {
     try {
+      // Simulate PDF processing with better mock data extraction
       console.log('Processing PDF file:', file.name);
 
+      // Simulate processing delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
+      // Extract actual filename without extension for name guess
       const fileName = file.name.replace(/\.[^/.]+$/, "");
       const nameGuess = this.extractNameFromFilename(fileName);
 
@@ -17,16 +20,17 @@ class PDFService {
   }
 
   extractNameFromFilename(filename) {
+    // Try to extract name from filename
     const cleanName = filename
-      .replace(/[_-]/g, ' ')           
-      .replace(/resume|cv|document/gi, '') 
+      .replace(/[_-]/g, ' ')           // Replace underscores and hyphens with spaces
+      .replace(/resume|cv|document/gi, '') // Remove common words
       .trim();
 
     if (cleanName && cleanName.length > 1) {
       return this.capitalizeWords(cleanName);
     }
 
-    return 'John Doe'; 
+    return 'John Doe'; // Default fallback
   }
 
   capitalizeWords(str) {
@@ -46,7 +50,7 @@ class PDFService {
       return this.parseResumeText(text, file.name);
     } catch (error) {
       console.error('Resume extraction error:', error);
-      throw error;
+      throw error; // Re-throw to be handled by component
     }
   }
 
@@ -67,8 +71,8 @@ class PDFService {
       extractedInfo.email = emailMatch[0];
     }
 
-    // FIXED: Phone regex without unnecessary escapes
-    const phoneRegex = /(\+?1[-. ]?)?(\([0-9]{3}\)[-. ]?)?[0-9]{3}[-. ]?[0-9]{4}/g;
+    // Extract phone number using regex
+    const phoneRegex = /(?:\+?1[-. ]?)?(?:\(?[0-9]{3}\)?[-. ]?)?[0-9]{3}[-. ]?[0-9]{4}/g;
     const phoneMatch = text.match(phoneRegex);
     if (phoneMatch && phoneMatch.length > 0) {
       extractedInfo.phone = phoneMatch[0].replace(/[^+\d]/g, '');
@@ -87,6 +91,7 @@ class PDFService {
       }
     }
 
+    // Fallback to filename if no name found in text
     if (!extractedInfo.name) {
       extractedInfo.name = this.extractNameFromFilename(filename.replace(/\.[^/.]+$/, ""));
     }
@@ -98,7 +103,10 @@ class PDFService {
   validateFile(file) {
     console.log('Validating file:', file.name, 'Type:', file.type, 'Size:', file.size);
 
-    const validTypes = ['application/pdf'];
+    const validTypes = [
+      'application/pdf'
+    ];
+
     const maxSize = 5 * 1024 * 1024; // 5MB
 
     if (!validTypes.includes(file.type)) {

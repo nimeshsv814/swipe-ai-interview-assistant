@@ -1,67 +1,5 @@
-// src/store/slices/candidateSlice.js - UPDATED FOR FIREBASE
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { firebaseService } from '../../services/firebaseService';
-
-// Async thunks for Firebase operations
-export const createCandidateInDB = createAsyncThunk(
-  'candidate/createInDB',
-  async (candidateData, { rejectWithValue }) => {
-    try {
-      const candidate = await firebaseService.createCandidate(candidateData);
-      return candidate;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const updateCandidateInDB = createAsyncThunk(
-  'candidate/updateInDB', 
-  async ({ candidateId, updateData }, { rejectWithValue }) => {
-    try {
-      const updatedCandidate = await firebaseService.updateCandidate(candidateId, updateData);
-      return updatedCandidate;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const fetchAllCandidates = createAsyncThunk(
-  'candidate/fetchAll',
-  async (_, { rejectWithValue }) => {
-    try {
-      const candidates = await firebaseService.getAllCandidates();
-      return candidates;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const deleteCandidateFromDB = createAsyncThunk(
-  'candidate/deleteFromDB',
-  async (candidateId, { rejectWithValue }) => {
-    try {
-      await firebaseService.deleteCandidate(candidateId);
-      return candidateId;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const uploadResumeToStorage = createAsyncThunk(
-  'candidate/uploadResume',
-  async ({ file, candidateId }, { rejectWithValue }) => {
-    try {
-      const resumeData = await firebaseService.uploadResumeFile(file, candidateId);
-      return resumeData;
-    } catch (error) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
+// src/store/slices/candidateSlice.js - NO FIREBASE, LOCALSTORAGE ONLY
+import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
   currentCandidate: null,
@@ -74,156 +12,175 @@ const initialState = {
   },
   missingFields: [],
   isProfileComplete: false,
-  loading: {
-    creating: false,
-    updating: false,
-    fetching: false,
-    uploading: false,
-  },
+  loading: false,
   error: null,
-  lastSync: null,
 };
 
 const candidateSlice = createSlice({
   name: 'candidate',
   initialState,
   reducers: {
-    // Local state management (no database operations)
+    // Set resume file
     setResumeFile: (state, action) => {
       state.resume = action.payload;
+      console.log('📄 Resume file set:', action.payload?.name);
     },
+
+    // Set extracted information from resume
     setExtractedInfo: (state, action) => {
       state.extractedInfo = { ...state.extractedInfo, ...action.payload };
+
+      // Check for missing required fields
       const required = ['name', 'email', 'phone'];
       state.missingFields = required.filter(field => !state.extractedInfo[field]);
       state.isProfileComplete = state.missingFields.length === 0;
+
+      console.log('✅ Extracted info updated:', state.extractedInfo);
+      console.log('Missing fields:', state.missingFields);
     },
+
+    // Update specific candidate info field
     updateCandidateInfo: (state, action) => {
       const { field, value } = action.payload;
       state.extractedInfo[field] = value;
+
+      // Remove from missing fields if now provided
       state.missingFields = state.missingFields.filter(f => f !== field);
       state.isProfileComplete = state.missingFields.length === 0;
+
+      console.log(`📝 Updated ${field}:`, value);
     },
+
+    // Create new candidate (localStorage only)
+    createCandidate: (state, action) => {
+      const candidateData = {
+        id: Date.now().toString(), // Simple ID generation
+        ...action.payload,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: 'active'
+      };
+
+      // Set as current candidate
+      state.currentCandidate = candidateData;
+
+      // Add to candidates list
+      state.candidatesList.unshift(candidateData);
+
+      console.log('👤 Candidate created (localStorage):', candidateData);
+    },
+
+    // Update candidate data
+    updateCandidate: (state, action) => {
+      const { candidateId, updateData } = action.payload;
+
+      // Update current candidate if it matches
+      if (state.currentCandidate?.id === candidateId) {
+        state.currentCandidate = {
+          ...state.currentCandidate,
+          ...updateData,
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      // Update in candidates list
+      const index = state.candidatesList.findIndex(c => c.id === candidateId);
+      if (index !== -1) {
+        state.candidatesList[index] = {
+          ...state.candidatesList[index],
+          ...updateData,
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      console.log('📝 Candidate updated (localStorage):', updateData);
+    },
+
+    // Set current candidate
     setCurrentCandidate: (state, action) => {
       state.currentCandidate = action.payload;
+      console.log('👤 Current candidate set:', action.payload?.name);
     },
+
+    // Clear current candidate and reset form
     clearCurrentCandidate: (state) => {
       state.currentCandidate = null;
       state.resume = null;
       state.extractedInfo = { name: '', email: '', phone: '' };
       state.missingFields = [];
       state.isProfileComplete = false;
+      console.log('🧹 Current candidate cleared');
     },
+
+    // Delete candidate
+    deleteCandidate: (state, action) => {
+      const candidateId = action.payload;
+
+      // Remove from list
+      state.candidatesList = state.candidatesList.filter(c => c.id !== candidateId);
+
+      // Clear current candidate if it was deleted
+      if (state.currentCandidate?.id === candidateId) {
+        state.currentCandidate = null;
+      }
+
+      console.log('🗑️  Candidate deleted (localStorage):', candidateId);
+    },
+
+    // Set loading state
+    setLoading: (state, action) => {
+      state.loading = action.payload;
+    },
+
+    // Set error state
+    setError: (state, action) => {
+      state.error = action.payload;
+      state.loading = false;
+      console.error('❌ Candidate error:', action.payload);
+    },
+
+    // Clear error
     clearError: (state) => {
       state.error = null;
     },
-  },
-  extraReducers: (builder) => {
-    builder
-      // Create candidate in database
-      .addCase(createCandidateInDB.pending, (state) => {
-        state.loading.creating = true;
-        state.error = null;
-      })
-      .addCase(createCandidateInDB.fulfilled, (state, action) => {
-        state.loading.creating = false;
-        state.currentCandidate = action.payload;
-        // Add to local list if not already present
-        const existingIndex = state.candidatesList.findIndex(c => c.id === action.payload.id);
-        if (existingIndex === -1) {
-          state.candidatesList.unshift(action.payload);
-        }
-        state.lastSync = new Date().toISOString();
-      })
-      .addCase(createCandidateInDB.rejected, (state, action) => {
-        state.loading.creating = false;
-        state.error = action.payload;
-      })
 
-      // Update candidate in database
-      .addCase(updateCandidateInDB.pending, (state) => {
-        state.loading.updating = true;
-        state.error = null;
-      })
-      .addCase(updateCandidateInDB.fulfilled, (state, action) => {
-        state.loading.updating = false;
-        const updatedCandidate = action.payload;
-
-        // Update current candidate if it's the same one
-        if (state.currentCandidate?.id === updatedCandidate.id) {
-          state.currentCandidate = { ...state.currentCandidate, ...updatedCandidate };
-        }
-
-        // Update in candidates list
-        const index = state.candidatesList.findIndex(c => c.id === updatedCandidate.id);
-        if (index !== -1) {
-          state.candidatesList[index] = { ...state.candidatesList[index], ...updatedCandidate };
-        }
-
-        state.lastSync = new Date().toISOString();
-      })
-      .addCase(updateCandidateInDB.rejected, (state, action) => {
-        state.loading.updating = false;
-        state.error = action.payload;
-      })
-
-      // Fetch all candidates from database
-      .addCase(fetchAllCandidates.pending, (state) => {
-        state.loading.fetching = true;
-        state.error = null;
-      })
-      .addCase(fetchAllCandidates.fulfilled, (state, action) => {
-        state.loading.fetching = false;
+    // Load candidates from localStorage (for initialization)
+    loadCandidatesFromStorage: (state, action) => {
+      if (action.payload && Array.isArray(action.payload)) {
         state.candidatesList = action.payload;
-        state.lastSync = new Date().toISOString();
-      })
-      .addCase(fetchAllCandidates.rejected, (state, action) => {
-        state.loading.fetching = false;
-        state.error = action.payload;
-      })
+        console.log('📥 Candidates loaded from localStorage:', action.payload.length);
+      }
+    },
 
-      // Delete candidate from database
-      .addCase(deleteCandidateFromDB.pending, (state) => {
-        state.loading.updating = true;
-        state.error = null;
-      })
-      .addCase(deleteCandidateFromDB.fulfilled, (state, action) => {
-        state.loading.updating = false;
-        const deletedId = action.payload;
+    // Add interview results to candidate
+    addInterviewResults: (state, action) => {
+      const { candidateId, results } = action.payload;
 
-        // Remove from candidates list
-        state.candidatesList = state.candidatesList.filter(c => c.id !== deletedId);
+      // Update current candidate
+      if (state.currentCandidate?.id === candidateId) {
+        state.currentCandidate = {
+          ...state.currentCandidate,
+          interviewResults: results,
+          interviewCompletedAt: new Date().toISOString(),
+          status: 'completed',
+          updatedAt: new Date().toISOString()
+        };
+      }
 
-        // Clear current candidate if it was deleted
-        if (state.currentCandidate?.id === deletedId) {
-          state.currentCandidate = null;
-        }
+      // Update in candidates list
+      const index = state.candidatesList.findIndex(c => c.id === candidateId);
+      if (index !== -1) {
+        state.candidatesList[index] = {
+          ...state.candidatesList[index],
+          interviewResults: results,
+          interviewCompletedAt: new Date().toISOString(),
+          status: 'completed',
+          updatedAt: new Date().toISOString()
+        };
+      }
 
-        state.lastSync = new Date().toISOString();
-      })
-      .addCase(deleteCandidateFromDB.rejected, (state, action) => {
-        state.loading.updating = false;
-        state.error = action.payload;
-      })
-
-      // Upload resume to storage
-      .addCase(uploadResumeToStorage.pending, (state) => {
-        state.loading.uploading = true;
-        state.error = null;
-      })
-      .addCase(uploadResumeToStorage.fulfilled, (state, action) => {
-        state.loading.uploading = false;
-        // Update resume with cloud storage URL
-        if (state.resume) {
-          state.resume.downloadURL = action.payload.downloadURL;
-          state.resume.cloudId = action.payload.id;
-        }
-        state.lastSync = new Date().toISOString();
-      })
-      .addCase(uploadResumeToStorage.rejected, (state, action) => {
-        state.loading.uploading = false;
-        state.error = action.payload;
-      });
+      console.log('🎯 Interview results added (localStorage):', results);
+    }
   },
 });
 
@@ -231,9 +188,16 @@ export const {
   setResumeFile,
   setExtractedInfo,
   updateCandidateInfo,
+  createCandidate,
+  updateCandidate,
   setCurrentCandidate,
   clearCurrentCandidate,
+  deleteCandidate,
+  setLoading,
+  setError,
   clearError,
+  loadCandidatesFromStorage,
+  addInterviewResults
 } = candidateSlice.actions;
 
 export default candidateSlice.reducer;

@@ -1,136 +1,237 @@
-// src/store/slices/interviewSlice.js
+// src/store/slices/interviewSlice.js - NO FIREBASE, LOCALSTORAGE ONLY
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { aiService } from '../../services/aiService';
 
-// Async thunk for generating interview question
+// Async thunk for generating questions (OpenAI only, no Firebase)
 export const generateQuestion = createAsyncThunk(
   'interview/generateQuestion',
-  async ({ candidateInfo, questionIndex }) => {
-    const difficulty = questionIndex < 2 ? 'easy' : questionIndex < 4 ? 'medium' : 'hard';
-    const question = await aiService.generateQuestion(candidateInfo, difficulty, questionIndex);
-    return { question, difficulty, questionIndex };
+  async ({ candidateInfo, difficulty, questionIndex }, { rejectWithValue }) => {
+    try {
+      console.log(`🤖 Generating ${difficulty} question ${questionIndex + 1}`);
+      const question = await aiService.generateQuestion(candidateInfo, difficulty, questionIndex);
+      return { question, difficulty, questionIndex };
+    } catch (error) {
+      console.error('AI question generation error:', error);
+      return rejectWithValue(error.message);
+    }
   }
 );
 
-// Async thunk for scoring answer
+// Async thunk for scoring answers (OpenAI only, no Firebase)  
 export const scoreAnswer = createAsyncThunk(
   'interview/scoreAnswer',
-  async ({ question, answer, difficulty }) => {
-    const score = await aiService.scoreAnswer(question, answer, difficulty);
-    return score;
-  }
-);
-
-// Async thunk for final evaluation
-export const generateFinalEvaluation = createAsyncThunk(
-  'interview/generateFinalEvaluation',
-  async ({ candidateInfo, questionAnswers }) => {
-    const evaluation = await aiService.generateFinalEvaluation(candidateInfo, questionAnswers);
-    return evaluation;
+  async ({ question, answer, difficulty }, { rejectWithValue }) => {
+    try {
+      console.log(`🎯 Scoring ${difficulty} answer...`);
+      const score = await aiService.scoreAnswer(question, answer, difficulty);
+      return { score, answer, difficulty };
+    } catch (error) {
+      console.error('AI answer scoring error:', error);
+      return rejectWithValue(error.message || 'Failed to score answer');
+    }
   }
 );
 
 const initialState = {
-  currentQuestion: null,
-  questionIndex: 0,
+  currentQuestionIndex: 0,
   questions: [],
   answers: [],
-  scores: [],
-  timer: 0,
+  currentQuestion: null,
+  timeRemaining: 0,
   isActive: false,
-  isPaused: false,
   isCompleted: false,
-  finalScore: 0,
-  finalSummary: '',
-  isLoading: false,
-  error: null,
+  isPaused: false,
+  totalQuestions: 6,
+  startTime: null,
+  endTime: null,
+  finalScore: null,
+  finalSummary: null,
+  loading: false,
+  error: null
 };
 
 const interviewSlice = createSlice({
   name: 'interview',
   initialState,
   reducers: {
+    // Start the interview
     startInterview: (state) => {
       state.isActive = true;
+      state.isCompleted = false;
       state.isPaused = false;
-      state.questionIndex = 0;
-      state.timer = 20; // Start with easy question timer
+      state.currentQuestionIndex = 0;
+      state.startTime = new Date().toISOString();
+      state.error = null;
+      state.timeRemaining = 20; // Start with easy question timer
+      console.log('🚀 Interview started (localStorage mode)');
     },
+
+    // Set timer for current question
+    setTimer: (state, action) => {
+      state.timeRemaining = action.payload;
+      console.log(`⏰ Timer set to ${action.payload}s`);
+    },
+
+    // Decrement timer each second
+    decrementTimer: (state) => {
+      if (state.timeRemaining > 0) {
+        state.timeRemaining -= 1;
+      }
+    },
+
+    // Submit answer (synchronous, no database)
+    submitAnswer: (state, action) => {
+      const { answer, score, timeSpent, difficulty, questionIndex } = action.payload;
+
+      const answerData = {
+        questionIndex,
+        question: state.currentQuestion,
+        answer,
+        score: score || 50, // Default score if not provided
+        timeSpent,
+        difficulty,
+        timestamp: new Date().toISOString()
+      };
+
+      // Add to answers array
+      state.answers.push(answerData);
+      console.log(`📝 Answer submitted (localStorage): ${score || 50} points`);
+    },
+
+    // Move to next question
+    nextQuestion: (state) => {
+      if (state.currentQuestionIndex < state.totalQuestions - 1) {
+        state.currentQuestionIndex += 1;
+        state.currentQuestion = null; // Clear for new generation
+        state.timeRemaining = 0;
+        console.log(`➡️  Moving to question ${state.currentQuestionIndex + 1}`);
+      }
+    },
+
+    // Complete the interview
+    completeInterview: (state, action) => {
+      state.isCompleted = true;
+      state.isActive = false;
+      state.endTime = new Date().toISOString();
+
+      if (action.payload) {
+        state.finalScore = action.payload.finalScore;
+        state.finalSummary = action.payload.finalSummary;
+      } else {
+        // Calculate final score from answers
+        const totalScore = state.answers.reduce((sum, answer) => sum + (answer.score || 0), 0);
+        state.finalScore = state.answers.length > 0 ? Math.round(totalScore / state.answers.length) : 0;
+        state.finalSummary = `Interview completed with ${state.answers.length} questions. Average score: ${state.finalScore}%`;
+      }
+
+      console.log(`🎉 Interview completed (localStorage): ${state.finalScore}% average`);
+    },
+
+    // Pause interview
     pauseInterview: (state) => {
       state.isPaused = true;
+      state.isActive = false;
+      console.log('⏸️  Interview paused');
     },
+
+    // Resume interview
     resumeInterview: (state) => {
       state.isPaused = false;
+      state.isActive = true;
+      console.log('▶️  Interview resumed');
     },
-    setTimer: (state, action) => {
-      state.timer = action.payload;
-    },
-    decrementTimer: (state) => {
-      if (state.timer > 0) {
-        state.timer -= 1;
-      }
-    },
-    submitAnswer: (state, action) => {
-      const { answer } = action.payload;
-      state.answers[state.questionIndex] = answer;
-    },
-    nextQuestion: (state) => {
-      state.questionIndex += 1;
-      if (state.questionIndex >= 6) {
-        state.isCompleted = true;
-        state.isActive = false;
-      } else {
-        // Set timer based on difficulty
-        const difficulty = state.questionIndex < 2 ? 'easy' : state.questionIndex < 4 ? 'medium' : 'hard';
-        state.timer = difficulty === 'easy' ? 20 : difficulty === 'medium' ? 60 : 120;
-      }
-    },
+
+    // Reset interview completely
     resetInterview: (state) => {
+      console.log('🔄 Interview reset');
       return { ...initialState };
     },
+
+    // Set error state
     setError: (state, action) => {
       state.error = action.payload;
+      state.loading = false;
+      console.error('❌ Interview error:', action.payload);
     },
+
+    // Clear error
+    clearError: (state) => {
+      state.error = null;
+    },
+
+    // Set loading state
+    setLoading: (state, action) => {
+      state.loading = action.payload;
+    }
   },
+
   extraReducers: (builder) => {
     builder
+      // Generate question cases
       .addCase(generateQuestion.pending, (state) => {
-        state.isLoading = true;
+        state.loading = true;
         state.error = null;
+        console.log('🤖 Generating question...');
       })
       .addCase(generateQuestion.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.loading = false;
         const { question, difficulty, questionIndex } = action.payload;
-        state.questions[questionIndex] = { question, difficulty, questionIndex };
+
+        // Set current question
         state.currentQuestion = question;
+
+        // Add to questions array if not already there
+        const existingIndex = state.questions.findIndex(q => q.index === questionIndex);
+        if (existingIndex === -1) {
+          state.questions.push({
+            index: questionIndex,
+            question,
+            difficulty,
+            timestamp: new Date().toISOString()
+          });
+        }
+
         // Set timer based on difficulty
-        state.timer = difficulty === 'easy' ? 20 : difficulty === 'medium' ? 60 : 120;
+        const timers = { easy: 20, medium: 60, hard: 120 };
+        state.timeRemaining = timers[difficulty] || 20;
+
+        console.log(`✅ Question generated: ${difficulty} level`);
       })
       .addCase(generateQuestion.rejected, (state, action) => {
-        state.isLoading = false;
-        state.error = action.error.message;
+        state.loading = false;
+        state.error = action.payload || 'Failed to generate question';
+        console.error('❌ Question generation failed:', action.payload);
+      })
+
+      // Score answer cases  
+      .addCase(scoreAnswer.pending, (state) => {
+        console.log('🎯 Scoring answer...');
       })
       .addCase(scoreAnswer.fulfilled, (state, action) => {
-        state.scores[state.questionIndex] = action.payload;
+        const { score } = action.payload;
+        console.log(`✅ Answer scored: ${score} points`);
+        // Score is handled by submitAnswer reducer
       })
-      .addCase(generateFinalEvaluation.fulfilled, (state, action) => {
-        const { totalScore, summary } = action.payload;
-        state.finalScore = totalScore;
-        state.finalSummary = summary;
+      .addCase(scoreAnswer.rejected, (state, action) => {
+        console.warn('⚠️  Answer scoring failed, using default score');
+        // Continue with default scoring in submitAnswer
       });
-  },
+  }
 });
 
 export const {
   startInterview,
-  pauseInterview,
-  resumeInterview,
   setTimer,
   decrementTimer,
   submitAnswer,
   nextQuestion,
+  completeInterview,
+  pauseInterview,
+  resumeInterview,
   resetInterview,
   setError,
+  clearError,
+  setLoading
 } = interviewSlice.actions;
 
 export default interviewSlice.reducer;

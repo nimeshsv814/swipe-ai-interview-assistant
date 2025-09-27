@@ -1,0 +1,222 @@
+/* src/components/ResumeUpload/ResumeUpload.css - UPLOAD ICON ALIGNMENT FIXES */
+
+.resume-upload {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  
+  .upload-card {
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e8e8e8;
+  }
+  
+  .upload-content {
+    padding: 30px;
+    text-align: center;
+  }
+  
+  .upload-title {
+    color: #1890ff !important;
+    margin-bottom: 16px !important;
+    font-weight: 600;
+  }
+  
+  .upload-description {
+    font-size: 16px;
+    margin-bottom: 32px;
+    color: #666;
+  }
+  
+  /* FIXED UPLOAD DRAGGER STYLES */
+  .upload-dragger {
+    border-radius: 12px !important;
+    border: 2px dashed #d9d9d9 !important;
+    background: #fafafa !important;
+    padding: 50px 30px !important;
+    transition: all 0.3s ease !important;
+    min-height: 200px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  
+  .upload-dragger:hover {
+    border-color: #1890ff !important;
+    background: #f0f8ff !important;
+  }
+  
+  /* UPLOAD ICON CONTAINER - PROPER ALIGNMENT */
+  .ant-upload-drag-icon {
+    margin-bottom: 20px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  
+  .ant-upload-drag-icon .anticon {
+    font-size: 48px !important;
+    color: #1890ff !important;
+    display: block !important;
+    line-height: 1 !important;
+  }
+  
+  /* UPLOAD TEXT STYLING */
+  .ant-upload-text {
+    font-size: 18px !important;
+    font-weight: 500 !important;
+    color: #333 !important;
+    margin: 0 0 8px 0 !important;
+    line-height: 1.4 !important;
+  }
+  
+  .ant-upload-hint {
+    font-size: 14px !important;
+    color: #999 !important;
+    margin: 0 !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* PROCESSING STATE */
+  .upload-processing {
+    padding: 60px 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+  }
+  
+  .upload-processing .ant-spin {
+    margin-bottom: 20px;
+  }
+  
+  .upload-processing .ant-progress {
+    max-width: 300px;
+    width: 100%;
+  }
+  
+  /* SUCCESS STATE */
+  .upload-success {
+    padding: 30px 20px;
+    text-align: center;
+  }
+  
+  .success-icon {
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .file-info {
+    margin: 20px auto;
+    text-align: left;
+    max-width: 300px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+  }
+  
+  .file-detail {
+    font-weight: 500;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .file-meta {
+    color: #666;
+    font-size: 13px;
+  }
+  
+  .extracted-info {
+    margin: 20px 0;
+    text-align: left;
+  }
+  
+  .extracted-info ul {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 12px auto;
+    max-width: 400px;
+    list-style: none;
+  }
+  
+  .extracted-info li {
+    margin: 8px 0;
+    font-size: 14px;
+  }
+  
+  /* BUTTONS */
+  .upload-buttons {
+    margin-top: 20px;
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  /* ERROR STATE */
+  .upload-error {
+    margin-top: 20px;
+  }
+  
+  /* RESPONSIVE DESIGN */
+  @media (max-width: 768px) {
+    .upload-content {
+      padding: 20px 16px;
+    }
+  
+    .upload-dragger {
+      padding: 40px 20px !important;
+      min-height: 160px !important;
+    }
+  
+    .ant-upload-drag-icon .anticon {
+      font-size: 40px !important;
+    }
+  
+    .ant-upload-text {
+      font-size: 16px !important;
+    }
+  
+    .upload-buttons {
+      flex-direction: column;
+    }
+  
+    .upload-buttons .ant-btn {
+      width: 100%;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .resume-upload {
+      padding: 12px;
+    }
+  
+    .upload-content {
+      padding: 16px 12px;
+    }
+  
+    .upload-dragger {
+      padding: 30px 16px !important;
+      min-height: 140px !important;
+    }
+  
+    .ant-upload-drag-icon .anticon {
+      font-size: 36px !important;
+    }
+  
+    .ant-upload-text {
+      font-size: 14px !important;
+    }
+  
+    .ant-upload-hint {
+      font-size: 12px !important;
+    }
+  }

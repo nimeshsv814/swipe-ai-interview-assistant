@@ -1,265 +1,425 @@
-// src/components/InterviewerTab/InterviewerDashboard.js
-import React, { useState } from 'react';
-import { useSelector } from 'react-redux';
+// src/components/InterviewerTab/InterviewerDashboard.js - FIXED DATA DISPLAY
+import React, { useEffect, useState } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import { 
   Card, 
   Table, 
   Typography, 
-  Space, 
   Tag, 
   Button, 
-  Input, 
-  Modal,
+  Modal, 
   Descriptions,
-  Timeline,
-  Progress
+  List,
+  Empty,
+  Space,
+  Input,
+  Select,
+  Statistic,
+  Row,
+  Col
 } from 'antd';
 import { 
-  SearchOutlined, 
-  EyeOutlined, 
-  TrophyOutlined,
-  UserOutlined,
-  CalendarOutlined,
-  CheckCircleOutlined,
+  UserOutlined, 
+  TrophyOutlined, 
   ClockCircleOutlined,
-  DashboardOutlined
+  EyeOutlined,
+  SearchOutlined,
+  FilterOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 
+import { loadCandidatesFromStorage } from '../../store/slices/candidateSlice';
+
 const { Title, Text } = Typography;
-const { Search } = Input;
+const { Option } = Select;
 
 const InterviewerDashboard = () => {
-  const { candidatesList } = useSelector(state => state.candidate);
+  const dispatch = useDispatch();
+  const { candidatesList = [] } = useSelector(state => state.candidate || {});
+
   const [selectedCandidate, setSelectedCandidate] = useState(null);
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [searchText, setSearchText] = useState('');
+  const [showDetails, setShowDetails] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-  // Filter candidates based on search
-  const filteredCandidates = candidatesList.filter(candidate =>
-    candidate.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    candidate.email.toLowerCase().includes(searchText.toLowerCase())
-  );
+  // Load candidates on component mount
+  useEffect(() => {
+    console.log('📊 Loading dashboard data...');
+    console.log('Current candidates in Redux:', candidatesList);
 
-  // Sort by score (highest first)
-  const sortedCandidates = filteredCandidates.sort((a, b) => (b.score || 0) - (a.score || 0));
+    // Try to load from localStorage if Redux is empty
+    if (candidatesList.length === 0) {
+      const persistedData = localStorage.getItem('persist:root');
+      if (persistedData) {
+        try {
+          const parsed = JSON.parse(persistedData);
+          if (parsed.candidate) {
+            const candidateData = JSON.parse(parsed.candidate);
+            if (candidateData.candidatesList && candidateData.candidatesList.length > 0) {
+              console.log('📥 Loading candidates from localStorage:', candidateData.candidatesList);
+              dispatch(loadCandidatesFromStorage(candidateData.candidatesList));
+            }
+          }
+        } catch (error) {
+          console.error('Error loading persisted data:', error);
+        }
+      }
+    }
+  }, [dispatch, candidatesList.length]);
 
-  const getStatusTag = (status) => {
-    const statusConfig = {
-      'completed': { color: 'success', icon: <CheckCircleOutlined /> },
-      'in-progress': { color: 'processing', icon: <ClockCircleOutlined /> },
-      'pending': { color: 'default', icon: <UserOutlined /> }
-    };
+  // Filter and search candidates
+  const filteredCandidates = candidatesList.filter(candidate => {
+    const matchesSearch = candidate.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         candidate.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const config = statusConfig[status] || statusConfig['pending'];
-    return (
-      <Tag color={config.color} icon={config.icon}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Tag>
-    );
+    const matchesStatus = statusFilter === 'all' || 
+                         (statusFilter === 'completed' && candidate.status === 'interview-completed') ||
+                         (statusFilter === 'pending' && candidate.status !== 'interview-completed');
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Sort by final score (completed interviews first, then by score)
+  const sortedCandidates = filteredCandidates.sort((a, b) => {
+    // Completed interviews first
+    if (a.status === 'interview-completed' && b.status !== 'interview-completed') return -1;
+    if (b.status === 'interview-completed' && a.status !== 'interview-completed') return 1;
+
+    // Then by score (highest first)
+    const aScore = a.finalScore || 0;
+    const bScore = b.finalScore || 0;
+    return bScore - aScore;
+  });
+
+  const handleViewDetails = (candidate) => {
+    setSelectedCandidate(candidate);
+    setShowDetails(true);
   };
 
-  const getScoreColor = (score) => {
-    if (score >= 80) return '#52c41a';
-    if (score >= 60) return '#faad14';
-    if (score >= 40) return '#fa8c16';
-    return '#ff4d4f';
+  const getStatusTag = (status, finalScore) => {
+    if (status === 'interview-completed') {
+      const color = finalScore >= 80 ? 'green' : 
+                   finalScore >= 60 ? 'blue' : 
+                   finalScore >= 40 ? 'orange' : 'red';
+      return <Tag color={color}>Completed ({finalScore}%)</Tag>;
+    }
+    return <Tag color="orange">Pending</Tag>;
   };
+
+  const getPerformanceLabel = (score) => {
+    if (score >= 80) return { label: 'Excellent', color: 'green' };
+    if (score >= 60) return { label: 'Good', color: 'blue' };
+    if (score >= 40) return { label: 'Fair', color: 'orange' };
+    return { label: 'Needs Improvement', color: 'red' };
+  };
+
+  // Calculate dashboard statistics
+  const totalCandidates = candidatesList.length;
+  const completedInterviews = candidatesList.filter(c => c.status === 'interview-completed').length;
+  const pendingInterviews = totalCandidates - completedInterviews;
+  const averageScore = completedInterviews > 0 ? 
+    Math.round(candidatesList.filter(c => c.finalScore).reduce((sum, c) => sum + c.finalScore, 0) / completedInterviews) : 0;
 
   const columns = [
     {
-      title: 'Name',
-      dataIndex: 'name',
-      key: 'name',
-      sorter: (a, b) => a.name.localeCompare(b.name),
+      title: 'Rank',
+      key: 'rank',
+      width: 60,
+      render: (_, __, index) => (
+        <div style={{ textAlign: 'center' }}>
+          {index < 3 ? (
+            <TrophyOutlined style={{ 
+              color: index === 0 ? '#ffd700' : index === 1 ? '#c0c0c0' : '#cd7f32',
+              fontSize: '16px'
+            }} />
+          ) : (
+            <Text type="secondary">{index + 1}</Text>
+          )}
+        </div>
+      ),
     },
     {
-      title: 'Email',
-      dataIndex: 'email',
-      key: 'email',
-    },
-    {
-      title: 'Score',
-      dataIndex: 'score',
-      key: 'score',
-      sorter: (a, b) => (a.score || 0) - (b.score || 0),
-      render: (score) => (
-        <Space>
-          <Text strong style={{ color: getScoreColor(score) }}>
-            {score || 0}/100
-          </Text>
-          <Progress 
-            percent={score || 0} 
-            size="small" 
-            strokeColor={getScoreColor(score)}
-            showInfo={false}
-            style={{ width: 60 }}
-          />
-        </Space>
-      )
+      title: 'Candidate',
+      key: 'candidate',
+      render: (candidate) => (
+        <div>
+          <div style={{ fontWeight: 'bold' }}>{candidate.name}</div>
+          <div style={{ fontSize: '12px', color: '#666' }}>{candidate.email}</div>
+          <div style={{ fontSize: '12px', color: '#666' }}>{candidate.phone}</div>
+        </div>
+      ),
     },
     {
       title: 'Status',
-      dataIndex: 'status',
       key: 'status',
-      render: (status) => getStatusTag(status),
-      filters: [
-        { text: 'Completed', value: 'completed' },
-        { text: 'In Progress', value: 'in-progress' },
-        { text: 'Pending', value: 'pending' }
-      ],
-      onFilter: (value, record) => record.status === value,
+      width: 150,
+      render: (candidate) => getStatusTag(candidate.status, candidate.finalScore),
     },
     {
-      title: 'Date',
-      dataIndex: 'date',
+      title: 'Score',
+      key: 'score',
+      width: 100,
+      sorter: (a, b) => (a.finalScore || 0) - (b.finalScore || 0),
+      render: (candidate) => {
+        if (candidate.finalScore !== undefined) {
+          const performance = getPerformanceLabel(candidate.finalScore);
+          return (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', color: performance.color }}>
+                {candidate.finalScore}%
+              </div>
+              <div style={{ fontSize: '11px', color: '#666' }}>
+                {performance.label}
+              </div>
+            </div>
+          );
+        }
+        return <Text type="secondary">-</Text>;
+      },
+    },
+    {
+      title: 'Interview Date',
       key: 'date',
-      render: (date) => new Date(date || Date.now()).toLocaleDateString(),
-      sorter: (a, b) => new Date(a.date || 0) - new Date(b.date || 0),
+      width: 120,
+      render: (candidate) => {
+        if (candidate.interviewCompletedAt) {
+          const date = new Date(candidate.interviewCompletedAt);
+          return (
+            <div>
+              <div>{date.toLocaleDateString()}</div>
+              <div style={{ fontSize: '11px', color: '#666' }}>
+                {date.toLocaleTimeString()}
+              </div>
+            </div>
+          );
+        }
+        return <Text type="secondary">Not completed</Text>;
+      },
     },
     {
       title: 'Actions',
       key: 'actions',
-      render: (_, record) => (
+      width: 100,
+      render: (candidate) => (
         <Button 
           type="primary" 
+          size="small"
           icon={<EyeOutlined />}
-          onClick={() => {
-            setSelectedCandidate(record);
-            setDetailModalVisible(true);
-          }}
+          onClick={() => handleViewDetails(candidate)}
         >
-          View Details
+          View
         </Button>
-      )
-    }
+      ),
+    },
   ];
 
+  const refreshData = () => {
+    window.location.reload();
+  };
+
   return (
-    <div className="interviewer-dashboard">
-      <div className="dashboard-header">
+    <div style={{ padding: '20px' }}>
+      <div style={{ marginBottom: '24px' }}>
         <Title level={2}>
-          <DashboardOutlined /> Interviewer Dashboard
+          <UserOutlined style={{ marginRight: '8px' }} />
+          Interviewer Dashboard
         </Title>
         <Text type="secondary">
           Manage and review candidate interviews
         </Text>
       </div>
 
-      <Card className="controls-card">
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <div className="dashboard-stats">
-            <Space size="large">
-              <div className="stat-item">
-                <Text strong>Total Candidates: </Text>
-                <Text>{candidatesList.length}</Text>
-              </div>
-              <div className="stat-item">
-                <Text strong>Completed: </Text>
-                <Text>{candidatesList.filter(c => c.status === 'completed').length}</Text>
-              </div>
-              <div className="stat-item">
-                <Text strong>In Progress: </Text>
-                <Text>{candidatesList.filter(c => c.status === 'in-progress').length}</Text>
-              </div>
-            </Space>
-          </div>
+      {/* Statistics Cards */}
+      <Row gutter={16} style={{ marginBottom: '24px' }}>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Total Candidates"
+              value={totalCandidates}
+              prefix={<UserOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Completed Interviews"
+              value={completedInterviews}
+              prefix={<TrophyOutlined />}
+              valueStyle={{ color: '#3f8600' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Pending Interviews"
+              value={pendingInterviews}
+              prefix={<ClockCircleOutlined />}
+              valueStyle={{ color: '#cf1322' }}
+            />
+          </Card>
+        </Col>
+        <Col span={6}>
+          <Card>
+            <Statistic
+              title="Average Score"
+              value={averageScore}
+              suffix="%"
+              prefix={<TrophyOutlined />}
+              valueStyle={{ color: averageScore >= 70 ? '#3f8600' : '#cf1322' }}
+            />
+          </Card>
+        </Col>
+      </Row>
 
-          <Search
-            placeholder="Search candidates by name or email"
-            allowClear
-            enterButton={<SearchOutlined />}
-            size="large"
-            onSearch={setSearchText}
-            onChange={(e) => setSearchText(e.target.value)}
+      {/* Filters and Search */}
+      <Card style={{ marginBottom: '20px' }}>
+        <Space>
+          <Input
+            placeholder="Search candidates..."
+            prefix={<SearchOutlined />}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ width: 200 }}
           />
+          <Select
+            value={statusFilter}
+            onChange={setStatusFilter}
+            style={{ width: 150 }}
+            prefix={<FilterOutlined />}
+          >
+            <Option value="all">All Status</Option>
+            <Option value="completed">Completed</Option>
+            <Option value="pending">Pending</Option>
+          </Select>
+          <Button 
+            icon={<ReloadOutlined />} 
+            onClick={refreshData}
+          >
+            Refresh
+          </Button>
         </Space>
       </Card>
 
-      <Card title="Candidates List" className="candidates-table-card">
-        <Table
-          columns={columns}
-          dataSource={sortedCandidates}
-          rowKey="id"
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showQuickJumper: true,
-            showTotal: (total, range) => 
-              `${range[0]}-${range[1]} of ${total} candidates`
-          }}
-        />
+      {/* Candidates Table */}
+      <Card>
+        {sortedCandidates.length > 0 ? (
+          <Table
+            columns={columns}
+            dataSource={sortedCandidates}
+            rowKey="id"
+            pagination={{ pageSize: 10 }}
+            size="middle"
+          />
+        ) : (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              <span>
+                No candidates found
+                <br />
+                <Text type="secondary">Complete some interviews to see results here</Text>
+              </span>
+            }
+          >
+            <Button type="primary" onClick={refreshData}>
+              Refresh Data
+            </Button>
+          </Empty>
+        )}
       </Card>
 
-      {/* Candidate Detail Modal */}
+      {/* Candidate Details Modal */}
       <Modal
         title={
-          <Space>
-            <UserOutlined />
+          <div>
+            <UserOutlined style={{ marginRight: '8px' }} />
             {selectedCandidate?.name} - Interview Details
-          </Space>
+          </div>
         }
-        visible={detailModalVisible}
-        onCancel={() => setDetailModalVisible(false)}
-        footer={null}
+        visible={showDetails}
+        onCancel={() => setShowDetails(false)}
         width={800}
+        footer={[
+          <Button key="close" onClick={() => setShowDetails(false)}>
+            Close
+          </Button>
+        ]}
       >
         {selectedCandidate && (
-          <div className="candidate-detail">
-            <Descriptions title="Candidate Information" bordered>
+          <div>
+            <Descriptions bordered column={2}>
               <Descriptions.Item label="Name">{selectedCandidate.name}</Descriptions.Item>
               <Descriptions.Item label="Email">{selectedCandidate.email}</Descriptions.Item>
               <Descriptions.Item label="Phone">{selectedCandidate.phone}</Descriptions.Item>
-              <Descriptions.Item label="Status">{getStatusTag(selectedCandidate.status)}</Descriptions.Item>
-              <Descriptions.Item label="Final Score">
-                <Space>
-                  <Text strong style={{ color: getScoreColor(selectedCandidate.score) }}>
-                    {selectedCandidate.score || 0}/100
-                  </Text>
-                  <TrophyOutlined style={{ color: getScoreColor(selectedCandidate.score) }} />
-                </Space>
+              <Descriptions.Item label="Resume">
+                {selectedCandidate.resumeFileName || 'N/A'}
               </Descriptions.Item>
-              <Descriptions.Item label="Interview Date">
-                <Space>
-                  <CalendarOutlined />
-                  {new Date(selectedCandidate.date || Date.now()).toLocaleString()}
-                </Space>
+              <Descriptions.Item label="Status">
+                {getStatusTag(selectedCandidate.status, selectedCandidate.finalScore)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Final Score">
+                {selectedCandidate.finalScore ? selectedCandidate.finalScore + '%' : 'N/A'}
               </Descriptions.Item>
             </Descriptions>
 
-            {selectedCandidate.summary && (
-              <Card title="AI Evaluation Summary" style={{ marginTop: 16 }}>
-                <Text>{selectedCandidate.summary}</Text>
-              </Card>
-            )}
+            {selectedCandidate.interviewResults && (
+              <div style={{ marginTop: '20px' }}>
+                <Title level={4}>Interview Summary</Title>
+                <Text>{selectedCandidate.interviewResults.finalSummary}</Text>
 
-            {selectedCandidate.interview && selectedCandidate.interview.length > 0 && (
-              <Card title="Interview Questions & Answers" style={{ marginTop: 16 }}>
-                <Timeline>
-                  {selectedCandidate.interview.map((qa, index) => (
-                    <Timeline.Item key={index}>
-                      <div className="qa-item">
-                        <Text strong>Q{index + 1}: </Text>
-                        <Text>{qa.question}</Text>
-                        <br />
-                        <Text strong>Answer: </Text>
-                        <Text>{qa.answer}</Text>
-                        <br />
-                        <Space style={{ marginTop: 8 }}>
-                          <Tag color={qa.difficulty === 'easy' ? 'green' : qa.difficulty === 'medium' ? 'orange' : 'red'}>
-                            {qa.difficulty?.toUpperCase()}
-                          </Tag>
-                          <Text strong>Score: {qa.score}/100</Text>
-                          <Text type="secondary">Time: {qa.timeSpent}s</Text>
-                        </Space>
-                      </div>
-                    </Timeline.Item>
-                  ))}
-                </Timeline>
-              </Card>
+                {selectedCandidate.interviewResults.interviewData && 
+                 selectedCandidate.interviewResults.interviewData.questions && (
+                  <div style={{ marginTop: '16px' }}>
+                    <Title level={5}>Questions & Answers</Title>
+                    <List
+                      size="small"
+                      bordered
+                      dataSource={selectedCandidate.interviewResults.interviewData.questions}
+                      renderItem={(question, index) => {
+                        const answer = selectedCandidate.interviewResults.interviewData.answers?.[index];
+                        return (
+                          <List.Item>
+                            <div style={{ width: '100%' }}>
+                              <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                                Q{index + 1}: {question.question || question}
+                              </div>
+                              {answer && (
+                                <div>
+                                  <div style={{ marginBottom: '4px' }}>
+                                    <Text type="secondary">Answer: </Text>
+                                    {answer.answer}
+                                  </div>
+                                  <div>
+                                    <Tag color={answer.score >= 70 ? 'green' : answer.score >= 50 ? 'orange' : 'red'}>
+                                      Score: {answer.score}%
+                                    </Tag>
+                                    <Tag>{answer.difficulty}</Tag>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
       </Modal>
+
+      {/* Debug Info (only show in development) */}
+      {process.env.NODE_ENV === 'development' && (
+        <Card style={{ marginTop: '20px', background: '#f0f0f0' }} size="small">
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            Debug: {candidatesList.length} candidates in Redux store
+          </Text>
+        </Card>
+      )}
     </div>
   );
 };

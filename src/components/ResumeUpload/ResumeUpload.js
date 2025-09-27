@@ -1,276 +1,260 @@
-// src/components/ResumeUpload/ResumeUpload.js - WITH PROPER CSS IMPORT
+// src/components/ResumeUpload/ResumeUpload.js - FIXED CANDIDATE CREATION
 import React, { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import { 
+  Card, 
   Upload, 
   Button, 
-  Card, 
+  Typography, 
   message, 
-  Spin, 
   Progress,
-  Typography,
-  Space,
-  Divider,
-  Alert
+  List,
+  Tag
 } from 'antd';
 import { 
   UploadOutlined, 
   FileTextOutlined, 
   CheckCircleOutlined,
-  LoadingOutlined,
-  DeleteOutlined,
   ReloadOutlined
 } from '@ant-design/icons';
 
 import { pdfService } from '../../services/pdfService';
-import { setResumeFile, setExtractedInfo, clearCurrentCandidate } from '../../store/slices/candidateSlice';
-import { setLoading, setError, clearError, setCurrentStep } from '../../store/slices/uiSlice';
+import { 
+  setResumeFile, 
+  setExtractedInfo,
+  createCandidate,
+  setCurrentCandidate
+} from '../../store/slices/candidateSlice';
+import { setCurrentStep } from '../../store/slices/uiSlice';
 
-// Import the CSS file for proper styling
-import './ResumeUpload.css';
-
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
 const ResumeUpload = () => {
   const dispatch = useDispatch();
-  const { resume, extractedInfo } = useSelector(state => state.candidate);
-  const { loading, errors } = useSelector(state => state.ui);
+  const [uploading, setUploading] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [extractedInfo, setExtractedInfoState] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleFileUpload = async (file) => {
     try {
-      console.log('Starting file upload:', file.name);
+      setUploading(true);
+      setUploadProgress(10);
 
+      console.log('📄 Starting file upload and processing...');
+
+      // Validate file
       pdfService.validateFile(file);
+      setUploadProgress(30);
 
-      dispatch(clearError('resume'));
-      dispatch(setLoading({ type: 'resume', value: true }));
-      setUploadProgress(0);
-
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 15;
-        });
-      }, 200);
-
-      const fileInfo = {
-        file,
+      // Set file in Redux
+      dispatch(setResumeFile({
         name: file.name,
-        size: pdfService.formatFileSize(file.size),
-        type: pdfService.getFileType(file.name),
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified,
+        uploadedAt: new Date().toISOString()
+      }));
+
+      setUploadedFile(file);
+      setUploadProgress(50);
+
+      console.log('🔍 Extracting resume data...');
+
+      // Extract resume data
+      const extractedData = await pdfService.extractResumeData(file);
+      setUploadProgress(80);
+
+      console.log('✅ Extracted data:', extractedData);
+
+      // Save extracted info to Redux
+      dispatch(setExtractedInfo(extractedData));
+      setExtractedInfoState(extractedData);
+
+      // CREATE CANDIDATE RECORD - THIS WAS MISSING!
+      console.log('👤 Creating candidate record...');
+
+      const candidateData = {
+        name: extractedData.name || 'Unknown Candidate',
+        email: extractedData.email || 'no-email@provided.com',
+        phone: extractedData.phone || 'No phone provided',
+        resumeFileName: file.name,
+        resumeSize: file.size,
         uploadedAt: new Date().toISOString(),
+        status: 'resume-uploaded',
+        extractedInfo: extractedData
       };
 
-      dispatch(setResumeFile(fileInfo));
+      // Create candidate in Redux store
+      dispatch(createCandidate(candidateData));
 
-      console.log('Extracting resume data...');
-      const extractedData = await pdfService.extractResumeData(file);
+      // Set as current candidate
+      dispatch(setCurrentCandidate(candidateData));
 
-      clearInterval(progressInterval);
       setUploadProgress(100);
 
-      dispatch(setExtractedInfo(extractedData));
+      message.success('Resume uploaded and candidate created successfully!');
 
-      message.success('Resume uploaded and processed successfully!');
-
-      if (extractedData.name && extractedData.email && extractedData.phone) {
-        setTimeout(() => {
-          dispatch(setCurrentStep('interview'));
-        }, 1500);
-      } else {
-        setTimeout(() => {
-          dispatch(setCurrentStep('profile'));
-        }, 1500);
-      }
+      // Move to profile completion step
+      setTimeout(() => {
+        dispatch(setCurrentStep('profile'));
+      }, 1000);
 
     } catch (error) {
-      console.error('File upload error:', error);
-      message.error(error.message);
-      dispatch(setError({ type: 'resume', error: error.message }));
+      console.error('❌ Upload error:', error);
+      message.error(error.message || 'Failed to process resume');
+      setUploading(false);
       setUploadProgress(0);
-
-      dispatch(setResumeFile(null));
-      dispatch(setExtractedInfo({ name: '', email: '', phone: '' }));
-    } finally {
-      dispatch(setLoading({ type: 'resume', value: false }));
     }
-
-    return false;
   };
 
-  const handleClearResume = () => {
-    console.log('Clearing resume data...');
-    dispatch(clearCurrentCandidate());
-    dispatch(clearError('resume'));
+  const customRequest = ({ file, onSuccess }) => {
+    handleFileUpload(file).then(() => {
+      setUploading(false);
+      onSuccess();
+    }).catch(() => {
+      setUploading(false);
+    });
+  };
+
+  const beforeUpload = (file) => {
+    try {
+      pdfService.validateFile(file);
+      return true;
+    } catch (error) {
+      message.error(error.message);
+      return false;
+    }
+  };
+
+  const handleRetryProcessing = () => {
+    if (uploadedFile) {
+      handleFileUpload(uploadedFile);
+    }
+  };
+
+  const handleClearAndUploadNew = () => {
+    setUploadedFile(null);
+    setExtractedInfoState(null);
     setUploadProgress(0);
-    message.info('Resume cleared. You can upload a new file.');
   };
-
-  const handleRetry = () => {
-    if (resume && resume.file) {
-      console.log('Retrying file processing...');
-      handleFileUpload(resume.file);
-    }
-  };
-
-  const uploadProps = {
-    name: 'resume',
-    multiple: false,
-    accept: '.pdf',
-    beforeUpload: handleFileUpload,
-    showUploadList: false,
-  };
-
-  const isProcessing = loading.resume || uploadProgress > 0;
 
   return (
-    <div className="resume-upload">
-      <Card className="upload-card">
-        <div className="upload-content">
-          <Title level={2} className="upload-title">
+    <div style={{ maxWidth: '600px', margin: '0 auto', padding: '20px' }}>
+      <Card>
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <Title level={2} style={{ color: '#1890ff' }}>
             Upload Your Resume
           </Title>
+          <Text type="secondary">
+            Please upload your resume in PDF format. Our system will extract 
+            your basic information and generate personalized interview questions.
+          </Text>
+        </div>
 
-          <Paragraph className="upload-description">
-            Please upload your resume in PDF format. Our system will extract your 
-            basic information and generate personalized interview questions.
-          </Paragraph>
-
-          {!resume && !isProcessing && (
-            <div className="upload-section">
-              <Dragger {...uploadProps} className="upload-dragger">
-                <div className="upload-icon-container">
-                  <UploadOutlined className="upload-icon" />
-                </div>
-                <div className="upload-text-container">
-                  <p className="upload-main-text">
-                    Click or drag your resume to this area to upload
-                  </p>
-                  <p className="upload-hint-text">
-                    Support for PDF files up to 5MB
-                  </p>
-                </div>
-              </Dragger>
-            </div>
-          )}
-
-          {isProcessing && (
-            <div className="upload-processing">
-              <Spin 
-                indicator={<LoadingOutlined style={{ fontSize: 32 }} spin />}
-                tip="Processing your resume..."
-              />
-              {uploadProgress > 0 && (
-                <Progress 
-                  percent={uploadProgress} 
-                  status={uploadProgress === 100 ? 'success' : 'active'}
-                  strokeWidth={8}
-                  style={{ marginTop: 24, maxWidth: 350 }}
-                />
-              )}
-            </div>
-          )}
-
-          {resume && !isProcessing && (
-            <div className="upload-success">
-              <div className="success-icon">
-                <CheckCircleOutlined style={{ fontSize: 56, color: '#52c41a' }} />
-              </div>
-
-              <Title level={4} style={{ color: '#52c41a', margin: '16px 0' }}>
+        {!uploadedFile ? (
+          <Dragger
+            name="resume"
+            multiple={false}
+            accept=".pdf"
+            customRequest={customRequest}
+            beforeUpload={beforeUpload}
+            disabled={uploading}
+            style={{
+              padding: '40px',
+              backgroundColor: uploading ? '#f5f5f5' : '#fafafa'
+            }}
+          >
+            <p className="ant-upload-drag-icon">
+              <FileTextOutlined style={{ fontSize: '48px', color: '#1890ff' }} />
+            </p>
+            <p className="ant-upload-text" style={{ fontSize: '18px', fontWeight: 'bold' }}>
+              {uploading ? 'Processing your resume...' : 'Click or drag file to this area to upload'}
+            </p>
+            <p className="ant-upload-hint" style={{ fontSize: '14px' }}>
+              Support for PDF files only. Maximum file size: 10MB
+            </p>
+          </Dragger>
+        ) : (
+          <div>
+            <div style={{ 
+              background: '#f6ffed', 
+              border: '1px solid #b7eb8f',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '20px',
+              textAlign: 'center'
+            }}>
+              <CheckCircleOutlined style={{ color: '#52c41a', fontSize: '24px', marginBottom: '8px' }} />
+              <Title level={4} style={{ color: '#52c41a', margin: '8px 0' }}>
                 Resume Uploaded Successfully!
               </Title>
 
-              <Card className="file-info" size="small">
-                <div className="file-detail">
-                  <FileTextOutlined style={{ color: '#1890ff' }} />
-                  <span>{resume.name}</span>
-                </div>
-                <div className="file-meta">
-                  <Text type="secondary">
-                    {resume.type} • {resume.size}
-                  </Text>
-                </div>
-              </Card>
-
-              {(extractedInfo.name || extractedInfo.email || extractedInfo.phone) ? (
-                <>
-                  <Divider />
-                  <div className="extracted-info">
-                    <Title level={5} style={{ marginBottom: 16 }}>
-                      ✅ Extracted Information:
-                    </Title>
-                    <ul>
-                      {extractedInfo.name && (
-                        <li><strong>Name:</strong> {extractedInfo.name}</li>
-                      )}
-                      {extractedInfo.email && (
-                        <li><strong>Email:</strong> {extractedInfo.email}</li>
-                      )}
-                      {extractedInfo.phone && (
-                        <li><strong>Phone:</strong> {extractedInfo.phone}</li>
-                      )}
-                    </ul>
-                  </div>
-                </>
-              ) : (
-                <Alert
-                  message="Information Extraction"
-                  description="We couldn't extract all information automatically. You'll be asked to complete your profile next."
-                  type="warning"
-                  showIcon
-                  style={{ margin: '20px 0', textAlign: 'left' }}
-                />
-              )}
-
-              <div className="upload-buttons">
-                <Button 
-                  icon={<ReloadOutlined />}
-                  onClick={handleRetry}
-                  type="default"
-                  size="large"
-                >
-                  Retry Processing
-                </Button>
-                <Button 
-                  icon={<DeleteOutlined />}
-                  onClick={handleClearResume}
-                  type="default"
-                  size="large"
-                  danger
-                >
-                  Clear & Upload New
-                </Button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '12px' }}>
+                <FileTextOutlined />
+                <Text strong>{uploadedFile.name}</Text>
+                <Text type="secondary">• {pdfService.formatFileSize(uploadedFile.size)}</Text>
               </div>
             </div>
-          )}
 
-          {errors.resume && (
-            <div className="upload-error">
-              <Alert
-                message="Upload Error"
-                description={errors.resume}
-                type="error"
-                showIcon
-                action={
-                  <Button 
-                    size="small" 
-                    type="text"
-                    onClick={() => dispatch(clearError('resume'))}
-                  >
-                    Dismiss
-                  </Button>
-                }
+            {uploading && (
+              <Progress 
+                percent={uploadProgress} 
+                status="active"
+                style={{ marginBottom: '20px' }}
               />
+            )}
+
+            {extractedInfo && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
+                  <CheckCircleOutlined style={{ color: '#52c41a', marginRight: '8px' }} />
+                  <Text strong>Extracted Information:</Text>
+                </div>
+
+                <List 
+                  size="small"
+                  bordered
+                  style={{ marginBottom: '20px' }}
+                >
+                  <List.Item>
+                    <Text strong>Name:</Text> {extractedInfo.name}
+                  </List.Item>
+                  <List.Item>
+                    <Text strong>Email:</Text> {extractedInfo.email}
+                  </List.Item>
+                  <List.Item>
+                    <Text strong>Phone:</Text> {extractedInfo.phone}
+                  </List.Item>
+                </List>
+
+                <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                  <Text type="secondary">
+                    ✅ Candidate record created successfully!
+                  </Text>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '20px' }}>
+              <Button 
+                icon={<ReloadOutlined />}
+                onClick={handleRetryProcessing}
+                disabled={uploading}
+              >
+                Retry Processing
+              </Button>
+              <Button 
+                icon={<UploadOutlined />}
+                onClick={handleClearAndUploadNew}
+                disabled={uploading}
+              >
+                Clear & Upload New
+              </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </Card>
     </div>
   );
